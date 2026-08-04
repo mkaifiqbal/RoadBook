@@ -3,7 +3,7 @@ services:
     name: roadbook-api
     runtime: python
     rootDir: backend
-    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate
+    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate && python manage.py seed_demo
     startCommand: gunicorn eld.wsgi:application
     healthCheckPath: /health/
     envVars:
@@ -20,10 +20,16 @@ services:
           name: roadbook-db
           property: connectionString
       - key: CORS_ALLOWED_ORIGINS
-        sync: false
+        value: https://road-book-rouge.vercel.app
       - key: DJANGO_CSRF_TRUSTED_ORIGINS
-        sync: false
+        value: https://road-book-rouge.vercel.app
       - key: ORS_API_KEY
+        sync: false
+      # Passwords used by `manage.py seed_demo` for newly created accounts.
+      # Existing accounts keep whatever password they already have.
+      - key: SEED_ADMIN_PASSWORD
+        sync: false
+      - key: SEED_DRIVER_PASSWORD
         sync: false
 
 databases:

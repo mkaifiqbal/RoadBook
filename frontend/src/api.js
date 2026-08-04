@@ -1,4 +1,9 @@
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+// Vercel does not proxy API requests, so production must point directly to
+// the Django service. The environment variable still allows local/staging
+// deployments to override this value.
+const API_BASE = (
+  import.meta.env.VITE_API_BASE_URL || 'https://roadbook-royl.onrender.com'
+).replace(/\/$/, '')
 
 let accessToken = localStorage.getItem('roadbook_access') || ''
 

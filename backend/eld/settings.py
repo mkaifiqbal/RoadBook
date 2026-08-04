@@ -14,14 +14,31 @@ load_dotenv(BASE_DIR / ".env")
 
 
 def env_list(name: str, default: str = "") -> list[str]:
-    return [item.strip() for item in os.environ.get(name, default).split(",") if item.strip()]
+    """Split a comma-separated env var, treating a blank value as unset.
+
+    A key present but empty (a common state for a half-filled .env) would
+    otherwise wipe out the default and, for the CORS list, silently lock the
+    deployed frontend out of the API.
+    """
+    raw = os.environ.get(name) or ""
+    if not raw.strip():
+        raw = default
+    return [item.strip() for item in raw.split(",") if item.strip()]
 
 
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-only-insecure-key-change-me")
-DEBUG = os.environ.get("DJANGO_DEBUG", "true").lower() == "true"
+
+# Render injects RENDER/RENDER_EXTERNAL_HOSTNAME into every service. Keying the
+# DEBUG default off it means a deploy is production-safe even when someone
+# forgets to set DJANGO_DEBUG in the dashboard, while `manage.py runserver`
+# locally still defaults to debug mode.
+ON_RENDER = bool(os.environ.get("RENDER") or os.environ.get("RENDER_EXTERNAL_HOSTNAME"))
+DEBUG = os.environ.get("DJANGO_DEBUG", "false" if ON_RENDER else "true").lower() == "true"
 
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,.onrender.com,.railway.app")
-CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
+RENDER_HOSTNAME = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
+if RENDER_HOSTNAME and RENDER_HOSTNAME not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(RENDER_HOSTNAME)
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -125,11 +142,24 @@ SIMPLE_JWT = {
     "REFRESH_TOKEN_LIFETIME": __import__("datetime").timedelta(days=7),
 }
 
-CORS_ALLOWED_ORIGINS = env_list(
-    "CORS_ALLOWED_ORIGINS",
-    "http://localhost:5173,http://127.0.0.1:5173",
-)
+DEFAULT_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173,https://road-book-rouge.vercel.app"
+
+CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS", DEFAULT_ORIGINS)
+# The production origin is always allowed. Without this, setting
+# CORS_ALLOWED_ORIGINS to a dev-only value in the Render dashboard silently
+# breaks the deployed frontend: the browser drops the response and the app
+# reports the API as unreachable.
+PRODUCTION_ORIGIN = "https://road-book-rouge.vercel.app"
+if PRODUCTION_ORIGIN not in CORS_ALLOWED_ORIGINS:
+    CORS_ALLOWED_ORIGINS.append(PRODUCTION_ORIGIN)
+# Vercel preview deployments get a fresh subdomain per commit, so they are
+# matched by pattern rather than listed one by one.
+CORS_ALLOWED_ORIGIN_REGEXES = [r"^https://[a-z0-9-]+\.vercel\.app$"]
 CORS_ALLOW_ALL_ORIGINS = os.environ.get("CORS_ALLOW_ALL", "false").lower() == "true"
+
+CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS", DEFAULT_ORIGINS) + ["https://*.vercel.app"]
+if RENDER_HOSTNAME:
+    CSRF_TRUSTED_ORIGINS.append(f"https://{RENDER_HOSTNAME}")
 
 if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
